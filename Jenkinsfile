@@ -1,11 +1,6 @@
 pipeline {
   agent any
 
-  tools {
-    jdk 'JDK11'
-    maven 'Maven3'
-  }
-
   options {
     buildDiscarder(logRotator(numToKeepStr: '20'))
     durabilityHint('PERFORMANCE_OPTIMIZED')
@@ -13,8 +8,6 @@ pipeline {
   }
 
   environment {
-    // Keep Maven quiet and CI-friendly
-    MAVEN_OPTS = '-Dorg.slf4j.simpleLogger.showDateTime=true -Djava.awt.headless=true'
     MAVEN_ARGS = '-B -ntp'
   }
 
@@ -26,13 +19,14 @@ pipeline {
     stage('Build & Test') {
       steps {
         script {
-          // Prefer wrapper if present; otherwise use system Maven from tools{}
-          def mvnCmd = fileExists('mvnw') ? (isUnix() ? './mvnw' : 'mvnw.cmd') : 'mvn'
+          def mvnCmd = isUnix() ? './mvnw' : 'mvnw.cmd'
           if (isUnix()) {
+            sh "java -version || true"
             sh "${mvnCmd} ${env.MAVEN_ARGS} --version"
             sh "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
             sh "${mvnCmd} ${env.MAVEN_ARGS} test"
           } else {
+            bat "java -version"
             bat "${mvnCmd} ${env.MAVEN_ARGS} --version"
             bat "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
             bat "${mvnCmd} ${env.MAVEN_ARGS} test"
@@ -40,16 +34,14 @@ pipeline {
         }
       }
       post {
-        always {
-          junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
-        }
+        always { junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml' }
       }
     }
 
     stage('Package WAR') {
       steps {
         script {
-          def mvnCmd = fileExists('mvnw') ? (isUnix() ? './mvnw' : 'mvnw.cmd') : 'mvn'
+          def mvnCmd = isUnix() ? './mvnw' : 'mvnw.cmd'
           if (isUnix()) {
             sh "${mvnCmd} ${env.MAVEN_ARGS} package -DskipTests"
           } else {
@@ -60,17 +52,11 @@ pipeline {
     }
 
     stage('Archive Artifact') {
-      steps {
-        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
-      }
+      steps { archiveArtifacts artifacts: 'target/*.war', fingerprint: true }
     }
   }
 
   post {
-    success { echo 'Build complete. WAR archived.' }
-    failure { echo 'Build failed. Check the first error above.' }
-    always {
-      cleanWs(deleteDirs: true, notFailBuild: true)
-    }
+    always { cleanWs(deleteDirs: true, notFailBuild: true) }
   }
 }
