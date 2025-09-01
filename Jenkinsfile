@@ -1,44 +1,43 @@
 pipeline {
-  agent {
-    // Uses a stable Maven+JDK11 container so you don't depend on node config
-    docker {
-      image 'maven:3.9.6-eclipse-temurin-11'
-      // Optional: cache dependencies between builds (uncomment if you want)
-      // args '-v $JENKINS_HOME/maven-cache:/root/.m2'
-      reuseNode true
-    }
+  agent any
+
+  tools {
+    jdk 'JDK11'
+    maven 'Maven3'
   }
 
   options {
-    timestamps()
     buildDiscarder(logRotator(numToKeepStr: '20'))
     durabilityHint('PERFORMANCE_OPTIMIZED')
-    ansiColor('xterm')
     timeout(time: 20, unit: 'MINUTES')
   }
 
   environment {
-    // Tweak Maven output to be CI-friendly
+    // Keep Maven quiet and CI-friendly
     MAVEN_OPTS = '-Dorg.slf4j.simpleLogger.showDateTime=true -Djava.awt.headless=true'
     MAVEN_ARGS = '-B -ntp'
   }
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
-    stage('Validate & Compile') {
+    stage('Build & Test') {
       steps {
-        sh "mvn ${env.MAVEN_ARGS} clean validate compile -DskipTests"
-      }
-    }
-
-    stage('Unit Tests') {
-      steps {
-        sh "mvn ${env.MAVEN_ARGS} test"
+        script {
+          // Prefer wrapper if present; otherwise use system Maven from tools{}
+          def mvnCmd = fileExists('mvnw') ? (isUnix() ? './mvnw' : 'mvnw.cmd') : 'mvn'
+          if (isUnix()) {
+            sh "${mvnCmd} ${env.MAVEN_ARGS} --version"
+            sh "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
+            sh "${mvnCmd} ${env.MAVEN_ARGS} test"
+          } else {
+            bat "${mvnCmd} ${env.MAVEN_ARGS} --version"
+            bat "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
+            bat "${mvnCmd} ${env.MAVEN_ARGS} test"
+          }
+        }
       }
       post {
         always {
@@ -49,26 +48,27 @@ pipeline {
 
     stage('Package WAR') {
       steps {
-        // Reuse compiled classes; don't re-run tests here (they already ran)
-        sh "mvn ${env.MAVEN_ARGS} package -DskipTests"
+        script {
+          def mvnCmd = fileExists('mvnw') ? (isUnix() ? './mvnw' : 'mvnw.cmd') : 'mvn'
+          if (isUnix()) {
+            sh "${mvnCmd} ${env.MAVEN_ARGS} package -DskipTests"
+          } else {
+            bat "${mvnCmd} ${env.MAVEN_ARGS} package -DskipTests"
+          }
+        }
       }
     }
 
     stage('Archive Artifact') {
       steps {
-        // NumberGuessGame WAR lands under target/*.war per pom packaging
         archiveArtifacts artifacts: 'target/*.war', fingerprint: true
       }
     }
   }
 
   post {
-    success {
-      echo 'Build complete. WAR archived.'
-    }
-    failure {
-      echo 'Build failed. Check logs above for the first error.'
-    }
+    success { echo 'Build complete. WAR archived.' }
+    failure { echo 'Build failed. Check the first error above.' }
     always {
       cleanWs(deleteDirs: true, notFailBuild: true)
     }
