@@ -1,6 +1,12 @@
 pipeline {
   agent any
 
+  tools {
+    // If you added JDK11, keep this; otherwise remove this line and Jenkins will use your system JDK (21 in your log)
+    jdk 'JDK11'
+    maven 'Maven3'
+  }
+
   options {
     buildDiscarder(logRotator(numToKeepStr: '20'))
     durabilityHint('PERFORMANCE_OPTIMIZED')
@@ -19,17 +25,14 @@ pipeline {
     stage('Build & Test') {
       steps {
         script {
-          def mvnCmd = isUnix() ? './mvnw' : 'mvnw.cmd'
           if (isUnix()) {
-            sh "java -version || true"
-            sh "${mvnCmd} ${env.MAVEN_ARGS} --version"
-            sh "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
-            sh "${mvnCmd} ${env.MAVEN_ARGS} test"
+            sh "mvn ${env.MAVEN_ARGS} --version"
+            sh "mvn ${env.MAVEN_ARGS} clean validate compile -DskipTests"
+            sh "mvn ${env.MAVEN_ARGS} test"
           } else {
-            bat "java -version"
-            bat "${mvnCmd} ${env.MAVEN_ARGS} --version"
-            bat "${mvnCmd} ${env.MAVEN_ARGS} clean validate compile -DskipTests"
-            bat "${mvnCmd} ${env.MAVEN_ARGS} test"
+            bat "mvn ${env.MAVEN_ARGS} --version"
+            bat "mvn ${env.MAVEN_ARGS} clean validate compile -DskipTests"
+            bat "mvn ${env.MAVEN_ARGS} test"
           }
         }
       }
@@ -41,11 +44,10 @@ pipeline {
     stage('Package WAR') {
       steps {
         script {
-          def mvnCmd = isUnix() ? './mvnw' : 'mvnw.cmd'
           if (isUnix()) {
-            sh "${mvnCmd} ${env.MAVEN_ARGS} package -DskipTests"
+            sh "mvn ${env.MAVEN_ARGS} package -DskipTests"
           } else {
-            bat "${mvnCmd} ${env.MAVEN_ARGS} package -DskipTests"
+            bat "mvn ${env.MAVEN_ARGS} package -DskipTests"
           }
         }
       }
